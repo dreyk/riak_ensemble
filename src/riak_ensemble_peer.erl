@@ -337,7 +337,8 @@ debug_local_get(Pid, Key) ->
 %%%===================================================================
 
 -spec probe(_, state()) -> next_state().
-probe(init, State) ->
+probe(init, State0) ->
+    State = maybe_set_callback_state(probe,State0),
     ?OUT("~p: probe~n", [State#state.id]),
     State2 = clear_or_preferred_leader(State),
     case is_pending(State2) of
@@ -359,7 +360,8 @@ probe({timeout, Replies}, State=#state{fact=Fact}) ->
     State2 = State#state{fact=Latest},
     State3 = check_views(State2),
     probe(delay, State3);
-probe(delay, State) ->
+probe(delay, State0) ->
+    State = maybe_set_callback_state(repare,State0),
     State2 = set_timer(?PROBE_DELAY, probe_continue, State),
     {next_state, probe, State2};
 probe(probe_continue, State) ->
@@ -371,7 +373,8 @@ probe(Msg, State) ->
 probe(Msg, From, State) ->
     common(Msg, From, State, probe).
 
-pending(init, State) ->
+pending(init, State0) ->
+    State = maybe_set_callback_state(pending,State0),
     State2 = set_timer(?PENDING_TIMEOUT, pending_timeout, State),
     {next_state, pending, State2#state{tree_trust=false}};
 pending(pending_timeout, State) ->
@@ -422,7 +425,8 @@ maybe_follow(Leader, State) ->
 %%% tree verification/exchange
 %%%===================================================================
 
-repair(init, State=#state{tree=Tree}) ->
+repair(init, State0=#state{tree=Tree}) ->
+    State = maybe_set_callback_state(repare,State0),
     riak_ensemble_peer_tree:async_repair(Tree),
     {next_state, repair, State#state{tree_trust=false}};
 repair(repair_complete, State) ->
@@ -436,7 +440,8 @@ repair(Msg, From, State) ->
 
 %%%===================================================================
 
-exchange(init, State) ->
+exchange(init, State0) ->
+    State = maybe_set_callback_state(exchange,State0),
     start_exchange(State),
     {next_state, exchange, State};
 exchange(exchange_complete, State) ->
@@ -465,7 +470,8 @@ start_exchange(State=#state{id=Id, ensemble=Ensemble, tree=Tree, members=Members
 %%%===================================================================
 
 -spec election(_, state()) -> next_state().
-election(init, State) ->
+election(init, State0) ->
+    State = maybe_set_callback_state(election,State0),
     %% io:format("~p/~p: starting election~n", [self(), State#state.id]),
     ?OUT("~p: starting election~n", [State#state.id]),
     State2 = case is_preffered_leader(State) of
@@ -516,7 +522,8 @@ election(Msg, State) ->
 election(Msg, From, State) ->
     common(Msg, From, State, election).
 
-prefollow({init, Id, NextEpoch}, State) ->
+prefollow({init, Id, NextEpoch}, State0) ->
+    State = maybe_set_callback_state(prefollow,State0),
     Prelim = {Id, NextEpoch},
     State2 = State#state{preliminary=Prelim},
     State3 = set_timer(?PREFOLLOW_TIMEOUT, prefollow_timeout, State2),
@@ -556,7 +563,8 @@ prefollow(Msg, From, State) ->
     common(Msg, From, State, prefollow).
 
 -spec prepare(_, state()) -> next_state().
-prepare(init, State=#state{id=Id}) ->
+prepare(init, State0=#state{id=Id}) ->
+    State = maybe_set_callback_state(pepare,State0),
     %% TODO: Change this hack where we keep old state and reincrement
     ?OUT("~p: prepare~n", [State#state.id]),
     {NextEpoch, _} = increment_epoch(State),
@@ -585,7 +593,8 @@ prepare(Msg, State) ->
 prepare(Msg, From, State) ->
     common(Msg, From, State, prepare).
 
-prelead(init, State=#state{id=Id, preliminary=Prelim}) ->
+prelead(init, State0=#state{id=Id, preliminary=Prelim}) ->
+    State = maybe_set_callback_state(prelead,State0),
     {Id, NextEpoch} = Prelim,
     State2 = send_all({new_epoch, Id, NextEpoch}, State),
     {next_state, prelead, State2};
@@ -606,7 +615,8 @@ prelead(Msg, From, State) ->
     common(Msg, From, State, prelead).
 
 -spec leading(_, state()) -> next_state().
-leading(init, State=#state{id=_Id}) ->
+leading(init, State0=#state{id=_Id}) ->
+    State = maybe_set_callback_state(leading,State0),
     ?OUT("~p: Leading~n", [_Id]),
     _ = lager:info("~p: Leading~n", [_Id]),
     start_exchange(State),
@@ -787,6 +797,7 @@ reset_follower_timer(State) ->
 following(not_ready, State) ->
     following(init, State#state{ready=false});
 following(init, State) ->
+
     ?OUT("~p: Following: ~p~n", [State#state.id, leader(State)]),
     start_exchange(State),
     State2 = reset_follower_timer(State),
@@ -1118,6 +1129,11 @@ maybe_ping(State=#state{id=Id}) ->
             _ = lager:info("Ping failed. Stepping down: ~p", [Id]),
             {failed, State2}
     end.
+
+-spec maybe_set_callback_state(atom(),state())->state().
+maybe_set_callback_state(StateName,State=#state{modstate = State,mod = M})->
+    NewState = M:change_state(StateName,M),
+    State#state{modstate = NewState}.
 
 -spec maybe_change_views(state()) -> {ok|failed|changed, state()}.
 maybe_change_views(State=#state{ensemble=Ensemble, fact=Fact}) ->

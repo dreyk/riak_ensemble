@@ -35,6 +35,7 @@
 -export([set_obj_epoch/2, set_obj_seq/2, set_obj_value/2]).
 -export([get/3, put/4, tick/5, ping/2, ready_to_start/0]).
 -export([synctree_path/2]).
+-export([change_state/2]).
 -export([handle_down/4]).
 
 -include_lib("riak_ensemble_types.hrl").
@@ -139,6 +140,10 @@ ready_to_start() ->
 
 synctree_path(_Ensemble, _Id) ->
     default.
+
+-spec change_state(atom(),state()) -> state().
+change_state(_StateName,State)->
+    State.
 
 %%===================================================================
 

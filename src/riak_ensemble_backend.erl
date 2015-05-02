@@ -94,6 +94,10 @@
 %% Callback used to determine if peers using this backend can be started.
 -callback ready_to_start() -> boolean().
 
+
+%% Callback used to notify backend about state change
+-callback change_state(atom(),state())-> state().
+
 %% Callback that allows a backend to override where a peer's synctree
 %% is stored. By default, each peer has an entirely independent on-disk
 %% synctree. Using this callback, a backend could do a M:1 or M:N
